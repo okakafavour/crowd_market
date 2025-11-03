@@ -10,26 +10,27 @@ import (
 )
 
 func RegisterRoutes(router *gin.Engine) {
-
+	// --- Home route ---
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"message": "welcome to crowd market",
+			"message": "Welcome to Crowd Market 🚀",
 		})
 	})
 
+	// --- Auth routes ---
 	router.POST("/register", controllers.RegisterUser)
 	router.POST("/login", controllers.LoginUser)
-	router.POST("/products", controllers.AddProduct)
-	router.GET("/products", controllers.GetAllProducts)
+
+	// --- Google Auth routes ---
 	router.GET("/auth/google/login", controllers.GoogleLogin)
 	router.GET("/auth/google/callback", controllers.GoogleCallBack)
-	router.PUT("/:id", controllers.UpdateProduct)
-	router.DELETE("/:id", controllers.DeleteProduct)
+	router.POST("/auth/google/web", controllers.GoogleLoginWeb)
 
+	// --- Email verification ---
 	router.GET("/verify", func(c *gin.Context) {
 		code := c.Query("code")
 		if code == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "verification code is required"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Verification code is required"})
 			return
 		}
 
@@ -42,6 +43,17 @@ func RegisterRoutes(router *gin.Engine) {
 		c.JSON(http.StatusOK, gin.H{"message": "Email verified successfully!"})
 	})
 
+	// --- Product routes ---
+	productRoutes := router.Group("/products")
+	{
+		productRoutes.POST("/", controllers.AddProduct)
+		productRoutes.GET("/", controllers.GetAllProducts)
+		productRoutes.GET("/:id", controllers.GetProductByID)
+		productRoutes.PUT("/:id", controllers.UpdateProduct)
+		productRoutes.DELETE("/:id", controllers.DeleteProduct)
+	}
+
+	// --- Protected routes (JWT required) ---
 	protected := router.Group("/user")
 	protected.Use(middleware.JWTAuthMiddleware())
 	{

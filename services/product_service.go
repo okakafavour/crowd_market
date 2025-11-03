@@ -20,6 +20,35 @@ func InitProductService() {
 	productCollection = config.DB.Collection("products")
 }
 
+// Helper: Convert string to ObjectID
+func toObjectID(id string) (primitive.ObjectID, error) {
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return primitive.NilObjectID, errors.New("invalid ID")
+	}
+	return objID, nil
+}
+
+// Helper: Filter by ID and optionally user ownership
+func buildFilter(productID, userID string) (bson.M, error) {
+	objID, err := toObjectID(productID)
+	if err != nil {
+		return nil, err
+	}
+
+	filter := bson.M{"_id": objID}
+
+	if userID != "" {
+		userObjID, err := toObjectID(userID)
+		if err != nil {
+			return nil, errors.New("invalid user ID")
+		}
+		filter["user_id"] = userObjID
+	}
+
+	return filter, nil
+}
+
 // ✅ Add a new product
 func AddProduct(product model.Product) (model.Product, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -39,12 +68,12 @@ func GetAllProducts(userID string) ([]model.Product, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	objID, err := primitive.ObjectIDFromHex(userID)
+	userObjID, err := toObjectID(userID)
 	if err != nil {
 		return nil, errors.New("invalid user ID")
 	}
 
-	filter := bson.M{"user_id": objID}
+	filter := bson.M{"user_id": userObjID}
 
 	cursor, err := productCollection.Find(ctx, filter)
 	if err != nil {
@@ -65,46 +94,38 @@ func GetAllProducts(userID string) ([]model.Product, error) {
 }
 
 // ✅ Get a single product by its ID
-func GetProductByID(id string) (model.Product, error) {
+func GetProductByID(id string) (*model.Product, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	objID, err := primitive.ObjectIDFromHex(id)
+	filter, err := buildFilter(id, "")
 	if err != nil {
-		return model.Product{}, errors.New("invalid product ID")
+		return nil, err
 	}
 
 	var product model.Product
-	err = productCollection.FindOne(ctx, bson.M{"_id": objID}).Decode(&product)
+	err = productCollection.FindOne(ctx, filter).Decode(&product)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return model.Product{}, errors.New("product not found")
+			return nil, errors.New("product not found")
 		}
-		return model.Product{}, err
+		return nil, err
 	}
 
-	return product, nil
+	return &product, nil
 }
 
 // ✅ Update a product (ensures ownership)
-func UpdateProductByUser(id string, userID string, fields map[string]interface{}) (model.Product, error) {
+func UpdateProductByUser(id string, userID string, fields map[string]interface{}) (*model.Product, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	productID, err := primitive.ObjectIDFromHex(id)
+	filter, err := buildFilter(id, userID)
 	if err != nil {
-		return model.Product{}, errors.New("invalid product ID")
+		return nil, err
 	}
 
-	userObjID, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return model.Product{}, errors.New("invalid user ID")
-	}
-
-	// Only allow updating if owned by the user
-	filter := bson.M{"_id": productID, "user_id": userObjID}
 	update := bson.M{"$set": fields}
-
 	result := productCollection.FindOneAndUpdate(
 		ctx,
 		filter,
@@ -115,12 +136,12 @@ func UpdateProductByUser(id string, userID string, fields map[string]interface{}
 	var updated model.Product
 	if err := result.Decode(&updated); err != nil {
 		if err == mongo.ErrNoDocuments {
-			return model.Product{}, errors.New("product not found or not owned by user")
+			return nil, errors.New("product not found or not owned by user")
 		}
-		return model.Product{}, err
+		return nil, err
 	}
 
-	return updated, nil
+	return &updated, nil
 }
 
 // ✅ Delete a product (ensures ownership)
@@ -128,17 +149,11 @@ func DeleteProductByUser(id string, userID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	productID, err := primitive.ObjectIDFromHex(id)
+	filter, err := buildFilter(id, userID)
 	if err != nil {
-		return errors.New("invalid product ID")
+		return err
 	}
 
-	userObjID, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return errors.New("invalid user ID")
-	}
-
-	filter := bson.M{"_id": productID, "user_id": userObjID}
 	result, err := productCollection.DeleteOne(ctx, filter)
 	if err != nil {
 		return err
@@ -150,15 +165,15 @@ func DeleteProductByUser(id string, userID string) error {
 	return nil
 }
 
-// ✅ Keep your old DeleteProduct for admin use if needed
+// ✅ Delete product for admin (no ownership check)
 func DeleteProduct(id string) error {
-	objID, err := primitive.ObjectIDFromHex(id)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	objID, err := toObjectID(id)
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	_, err = productCollection.DeleteOne(ctx, bson.M{"_id": objID})
 	return err

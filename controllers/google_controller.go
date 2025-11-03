@@ -6,16 +6,20 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
+	"google.golang.org/api/idtoken"
 )
 
+// Redirect-based Google login (for backend OAuth flow)
 func GoogleLogin(c *gin.Context) {
 	url := config.GoogleOauthConfig.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
+// OAuth callback for backend login
 func GoogleCallBack(c *gin.Context) {
 	code := c.Query("code")
 	if code == "" {
@@ -56,12 +60,74 @@ func GoogleCallBack(c *gin.Context) {
 	}
 
 	tokenString, _ := services.GenerateJWT(email)
-
 	c.JSON(http.StatusOK, gin.H{
 		"token": tokenString,
 		"user": gin.H{
 			"name":  name,
 			"email": email,
 		},
+	})
+}
+
+// ✅ Web login using Flutter/React with ID token
+func GoogleLoginWeb(c *gin.Context) {
+	var body struct {
+		IdToken string `json:"idToken"`
+	}
+
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	// ✅ Validate the Google ID token
+	payload, err := idtoken.Validate(context.Background(), body.IdToken, "")
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid ID token"})
+		return
+	}
+
+	// ✅ Allow both backend and frontend client IDs
+	validAudiences := []string{
+		os.Getenv("GOOGLE_CLIENT_ID"), // Backend Client ID (from .env)
+		"208804397507-0bu3dp1neogk2a5nl75s85cvtthvcc81.apps.googleusercontent.com", // Frontend Client ID
+	}
+
+	aud, _ := payload.Claims["aud"].(string)
+	valid := false
+	for _, v := range validAudiences {
+		if aud == v {
+			valid = true
+			break
+		}
+	}
+
+	if !valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized audience"})
+		return
+	}
+
+	// ✅ Extract user details from token
+	email, _ := payload.Claims["email"].(string)
+	name, _ := payload.Claims["name"].(string)
+
+	// ✅ Create or find user
+	user, _ := services.FindUserByEmail(email)
+	if user == nil {
+		services.CreateGoogleUser(name, email)
+	}
+
+	// ✅ Generate your app's JWT token
+	token, err := services.GenerateJWT(email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate JWT"})
+		return
+	}
+
+	// ✅ Respond with token and user info
+	c.JSON(http.StatusOK, gin.H{
+		"token": token,
+		"email": email,
+		"name":  name,
 	})
 }

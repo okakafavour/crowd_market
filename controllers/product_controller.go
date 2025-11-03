@@ -70,7 +70,7 @@ func AddProduct(c *gin.Context) {
 	})
 }
 
-// ✅ Get all products (only for the logged-in user)
+// ✅ Get all products
 func GetAllProducts(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -86,7 +86,23 @@ func GetAllProducts(c *gin.Context) {
 	})
 }
 
-// ✅ Update product (only if owned by user)
+// ✅ NEW: Get product by ID
+func GetProductByID(c *gin.Context) {
+	productID := c.Param("id")
+
+	product, err := services.GetProductByID(productID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Product fetched successfully",
+		"product": product,
+	})
+}
+
+// ✅ Update product
 func UpdateProduct(c *gin.Context) {
 	productID := c.Param("id")
 	userID := c.GetString("user_id")
@@ -126,17 +142,14 @@ func UpdateProduct(c *gin.Context) {
 			updateFields["category"] = category
 		}
 
-		// 🧩 If new image provided → delete old one and upload new
+		// 🧩 Optional new image
 		file, fileHeader, err := c.Request.FormFile("image")
 		if err == nil {
 			defer file.Close()
-
-			// Get existing product to find old image
 			oldProduct, err := services.GetProductByID(productID)
 			if err == nil && oldProduct.ImageURL != "" {
-				_ = services.DeleteFromCloudinary(oldProduct.ImageURL) // ignore error
+				_ = services.DeleteFromCloudinary(oldProduct.ImageURL)
 			}
-
 			imageURL, err := services.UploadToCloudinary(file, fileHeader)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload new image: " + err.Error()})
@@ -163,7 +176,7 @@ func UpdateProduct(c *gin.Context) {
 	})
 }
 
-// ✅ Delete product (only if owned by user)
+// ✅ Delete product
 func DeleteProduct(c *gin.Context) {
 	productID := c.Param("id")
 	userID := c.GetString("user_id")
@@ -174,13 +187,11 @@ func DeleteProduct(c *gin.Context) {
 		return
 	}
 
-	// Ownership check
 	if product.UserID.Hex() != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You are not allowed to delete this product"})
 		return
 	}
 
-	// Delete image from Cloudinary
 	if product.ImageURL != "" {
 		_ = services.DeleteFromCloudinary(product.ImageURL)
 	}
