@@ -3,7 +3,7 @@ services:
     name: crowd-market-backend
     env: go
     plan: free
-    buildCommand: go build -o app .
+    buildCommand: go build -o app ./cmd
     startCommand: ./app
     envVars:
       - key: PORT
