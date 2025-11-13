@@ -13,7 +13,6 @@ import (
 )
 
 func main() {
-	// 🧩 Initialize configuration and services
 	config.InitConfig()
 	services.InitUserService()
 	services.InitProductService()
@@ -30,15 +29,12 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// ✅ Health check route
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "Crowd Market API is running 🚀"})
 	})
 
-	// 🧭 Register all other routes
 	routes.RegisterRoutes(router)
 
-	// 🌐 Pick Render-assigned port or fallback to 8080 locally
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
