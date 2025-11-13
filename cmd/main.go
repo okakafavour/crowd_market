@@ -20,7 +20,7 @@ func main() {
 
 	router := gin.Default()
 
-	// 🌍 Enable CORS
+	// 🌍 CORS configuration
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -30,7 +30,12 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// 🧭 Register all routes
+	// ✅ Health check route
+	router.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{"message": "Crowd Market API is running 🚀"})
+	})
+
+	// 🧭 Register all other routes
 	routes.RegisterRoutes(router)
 
 	// 🌐 Pick Render-assigned port or fallback to 8080 locally
