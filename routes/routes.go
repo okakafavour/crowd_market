@@ -10,12 +10,6 @@ import (
 )
 
 func RegisterRoutes(router *gin.Engine) {
-	// --- Home route ---
-	router.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Welcome to Crowd Market 🚀",
-		})
-	})
 
 	// --- Auth routes ---
 	router.POST("/register", controllers.RegisterUser)
